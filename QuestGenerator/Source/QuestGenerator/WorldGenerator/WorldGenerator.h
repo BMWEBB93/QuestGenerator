@@ -7,6 +7,7 @@
 
 #include "ChunkVisualiser.h"
 #include "OceanChunk.h"
+#include "ChunkData.h"
 
 #include "WorldGenerator.generated.h"
 
@@ -31,7 +32,15 @@ public:
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Generation")
 	void GenerateWorld();	
 	
+	void GenerateHeightmap(FChunkData& chunkData);
+	
+	int GetLOD(FIntPoint Coord);
+	FIntPoint GetLODTransitionBoundary(int LOD, FIntPoint Coord);
 
+	
+	UPROPERTY()
+	TMap<FIntPoint, FChunkData> ChunkData;
+	
 	UPROPERTY()
 	TMap<FIntPoint, AOceanChunk*> OceanChunks;
 	
@@ -39,25 +48,117 @@ public:
 	TMap<FIntPoint, AChunkVisualiser*> ChunkVisualisers;
 	
 	
+	// player reference used to move chunks
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	ACharacter* Player;
+
+	UPROPERTY()
+	FVector LastPlayerLocation = FVector(0, 0, 0);
+
+	UPROPERTY()
+	FIntPoint PlayerChunkCoord = FIntPoint(0, 0);
+
+	// used to move chunks
+	UPROPERTY()
+	FVector PlayerDelta = FVector(0, 0, 0);
+
+	
+	/////////////////////////
+	/// World Settings
+	////////////////////////
+	
+	//
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	int WorldSize = 16; // value is in chunks
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	int Seed = 12345;
+	
+	UPROPERTY()
+	float SeedOffsetX;
+	
+	UPROPERTY()
+	float SeedOffsetY;
+	
+	// height before noise is applied
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float ContinentBaseHeight = 1000.f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float OceanDepth = 1000.f;
+	
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float OceanFloorNoiseFrequency = 0.0002f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float OceanFloorNoiseScale = 500.f;
+	
+	
+	// Noise 1
+	// frequency of sampled noise for heightmap
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float Noise1Frequency = 0.00005f;
+
+	// ratio of height this noise affects
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float Noise1Scale = 2000.f;
+
+	// Noise 2
+	// frequency of sampled noise for heightmap
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float Noise2Frequency = 0.0002f;
+
+	// ratio of height this noise affects
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float Noise2Scale = 400.f;
+
+	// Noise 3
+	// frequency of sampled noise for heightmap
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float Noise3Frequency = 0.005f;
+
+	// ratio of height this noise affects
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float Noise3Scale = 50.f;
+		
+	
+	/////////////////////////
+	/// Chunk settings
+	/////////////////////////
+	
+	UPROPERTY()
+	float ChunkSize;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk Settings")
 	UMaterialInterface* TerrainMaterial;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk Settings")
 	UMaterialInterface* OceanMaterial;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
-	int WorldSize = 16; // value is in chunks
-
-	UPROPERTY()
-	float ChunkSize;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk Settings")
 	float ChunkScale = 200;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk Settings")
-	int ChunkResolution = 30;
+	int ChunkResolution = 32;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk Settings")
 	float ChunkUVScale = 200;
+	
+	
+	////////////////////////////
+	/// Lod settings
+	////////////////////////////
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lod")
+	int LOD1RenderDistance = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lod")
+	int LOD2RenderDistance = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lod")
+	int LOD3RenderDistance = 3;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lod")
+	int LOD4RenderDistance = 10;
 };

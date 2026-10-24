@@ -30,9 +30,15 @@ void AChunkVisualiser::Tick(float DeltaTime)
 
 }
 
-void AChunkVisualiser::GenerateChunk(UMaterialInterface* TerrainMaterial)
+UFUNCTION(CallInEditor)
+void AChunkVisualiser:: GenerateChunk(
+const FChunkData* Data,    
+UMaterialInterface* TerrainMaterial,
+FIntPoint LODBorderDir)
 {
 	Mesh->ClearMeshSection(0);
+	
+	float ChunkSize = Resolution * Scale;
 
 	TArray<FVector> Vertices;
 	TArray<int32> TrianglesInner;
@@ -45,11 +51,40 @@ void AChunkVisualiser::GenerateChunk(UMaterialInterface* TerrainMaterial)
 	// Create Vertices
 	for (int y = 0; y <= Resolution; y++)
 	{
+		
 		for (int x = 0; x <= Resolution; x++)
 		{
-			float Height = 0.f;
-			int Index = y * Resolution + x;	
+			int Index = y * (Resolution + 1) + x;
 			
+			bool bIsOcean = false;
+			
+			// get the world coordinate of vetices
+			float WorldX = WorldCoord.X * ChunkSize + x * Scale;
+			float WorldY = WorldCoord.Y * ChunkSize + y * Scale;
+			
+			float Height;
+			if (bIsInGameWorld)
+			{
+				Height = Data->Heights[Index];
+			}
+			else
+			{
+				float OceanNoise1 = (FMath::PerlinNoise2D(FVector2D(
+					WorldX + SeedOffsetX, 
+					WorldY + SeedOffsetY)  * OceanFloorNoiseFrequency) + 1) / 2;
+				
+				
+				float OceanNoise2 = (FMath::PerlinNoise2D(FVector2D(
+					WorldX + SeedOffsetX, 
+					WorldY + SeedOffsetY)  * OceanFloorNoiseFrequency * 8) + 1) / 2;
+				
+				
+				Height = -OceanDepth + (OceanNoise1 * OceanFloorNoiseScale) + (OceanNoise2 * OceanFloorNoiseScale/5);			
+			}
+				
+			
+			
+			// 
 			
 			Vertices.Add(FVector(x * Scale, y * Scale, Height));
 			UVs.Add(FVector2D((float)x / ChunkUVScale * Scale, (float)y / ChunkUVScale * Scale));                

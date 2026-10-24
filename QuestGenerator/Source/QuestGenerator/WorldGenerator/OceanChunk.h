@@ -35,6 +35,14 @@ public:
 	
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
+	FIntPoint WorldCoord = FIntPoint(0, 0);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
+	FIntPoint ChunkCoord = FIntPoint(0, 0);
+	
+	
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
 	float OceanLevel = 0.f;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
@@ -45,4 +53,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
 	int Resolution = 100;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
+	int LOD = 1;
 };

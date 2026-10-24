@@ -6,6 +6,9 @@
 #include "GameFramework/Actor.h"
 #include "ProceduralMeshComponent.h"
 
+#include "ChunkData.h"
+
+
 #include "ChunkVisualiser.generated.h"
 
 UCLASS()
@@ -25,8 +28,10 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
-	UFUNCTION(CallInEditor)
-	void GenerateChunk(UMaterialInterface* TerrainMaterial);
+	void GenerateChunk(
+	const FChunkData* Data,    
+	UMaterialInterface* TerrainMaterial,
+	FIntPoint LODBorderDir);
 	
 	UPROPERTY()
 	UProceduralMeshComponent* Mesh;
@@ -43,6 +48,17 @@ public:
 	
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
+	int LOD = 1;
+	
+	UPROPERTY()
+	float SeedOffsetX;
+	
+	UPROPERTY()
+	float SeedOffsetY;
+	
+	
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
 	FIntPoint WorldCoord = FIntPoint(0 , 0);
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
@@ -50,4 +66,20 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parameters")
 	TArray<float> Heights;
+	
+	
+	
+	// ocean settings
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Edge Settings")
+	bool bIsInGameWorld = true;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Edge Settings")
+	float OceanDepth = 1000.f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Edge Settings")
+	float OceanFloorNoiseFrequency = 0.0002f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Edge Settings")
+	float OceanFloorNoiseScale = 500.f;
+
 };
