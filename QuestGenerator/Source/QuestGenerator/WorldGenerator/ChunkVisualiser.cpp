@@ -48,27 +48,41 @@ FIntPoint LODBorderDir)
 	TArray<FLinearColor> Colours;
 	TArray<FProcMeshTangent> Tangents;  
 	
+	// amount of verts x and y represent in LOD
+	int LODStep =  1 << (LOD - 1);
+	
+	int LODAdjustedResolution = Resolution / LODStep;
+	float LODAdjustedScale = Scale * LODStep;
+	
 	// Create Vertices
-	for (int y = 0; y <= Resolution; y++)
+	for (int y = 0; y <= LODAdjustedResolution; y++)
 	{
 		
-		for (int x = 0; x <= Resolution; x++)
-		{
-			int Index = y * (Resolution + 1) + x;
+		for (int x = 0; x <= LODAdjustedResolution; x++)
+		{			
+			// 
+			bool bIsLeftEdge = x * LODStep == 0;
+			bool bIsRightEdge = x * LODStep == Resolution;
+			bool bIsBottomEdge = y * LODStep == 0;
+			bool bIsTopEdge = y * LODStep == Resolution;
+						
 			
-			bool bIsOcean = false;
-			
-			// get the world coordinate of vetices
-			float WorldX = WorldCoord.X * ChunkSize + x * Scale;
-			float WorldY = WorldCoord.Y * ChunkSize + y * Scale;
-			
-			float Height;
-			if (bIsInGameWorld)
+			auto GetHeight = [&](int SampleX, int SampleY) -> float
 			{
-				Height = Data->Heights[Index];
-			}
-			else
-			{
+				int Index = SampleY * LODStep * (Resolution + 1) + SampleX * LODStep;
+				
+				if (bIsInGameWorld)
+				{
+					if (Data)
+					{
+						return Data->Heights[Index];
+					}					
+				}
+				
+				// get the world coordinate of vetices
+				float WorldX = WorldCoord.X * ChunkSize + x * LODAdjustedScale;
+				float WorldY = WorldCoord.Y * ChunkSize + y * LODAdjustedScale;
+				
 				float OceanNoise1 = (FMath::PerlinNoise2D(FVector2D(
 					WorldX + SeedOffsetX, 
 					WorldY + SeedOffsetY)  * OceanFloorNoiseFrequency) + 1) / 2;
@@ -78,29 +92,85 @@ FIntPoint LODBorderDir)
 					WorldX + SeedOffsetX, 
 					WorldY + SeedOffsetY)  * OceanFloorNoiseFrequency * 8) + 1) / 2;
 				
-				
-				Height = -OceanDepth + (OceanNoise1 * OceanFloorNoiseScale) + (OceanNoise2 * OceanFloorNoiseScale/5);			
-			}
-				
+				return  -OceanDepth + (OceanNoise1 * OceanFloorNoiseScale) + (OceanNoise2 * OceanFloorNoiseScale/5);
+			};
+						
 			
+			float Height = GetHeight(x, y);
 			
-			// 
+			//&& x % LODStep == 0
 			
-			Vertices.Add(FVector(x * Scale, y * Scale, Height));
-			UVs.Add(FVector2D((float)x / ChunkUVScale * Scale, (float)y / ChunkUVScale * Scale));                
+		   // Vert is in bottom edge and needs to be adjusted, skips verts on true coordinates
+            if (LODBorderDir.Y < 0 && bIsBottomEdge && x % 2 != 0)
+            {                    
+                int32 PrevX = (x / 2) * 2;                   
+                float PrevHeight =  GetHeight(PrevX, y);
+                
+                int32 NextX = FMath::Min(PrevX + 2, LODAdjustedResolution);
+                float NextHeight = GetHeight(NextX, y);
+                
+                float HeightRatio = float(x - PrevX) / float(NextX - PrevX);
+                Height = FMath::Lerp(PrevHeight, NextHeight, HeightRatio);                    
+            }
+            
+            // Vert is in top edge and needs to be adjusted
+            if (LODBorderDir.Y > 0 && bIsTopEdge && x % 2 != 0)
+            {
+                int32 PrevX = (x / 2) * 2;                   
+                float PrevHeight = GetHeight(PrevX, y);
+                
+                int32 NextX = FMath::Min(PrevX + 2, LODAdjustedResolution);
+                float NextHeight = GetHeight(NextX, y);;
+                
+                float HeightRatio = float(x - PrevX) / float(NextX - PrevX);
+                Height = FMath::Lerp(PrevHeight, NextHeight, HeightRatio);                    
+            }
+            
+            // Vert is in Right edge and needs to be adjusted
+            if (LODBorderDir.X > 0 && bIsRightEdge && y % 2 != 0)
+            {
+                int32 PrevY = (y / 2) * 2;
+                float PrevHeight = GetHeight(x, PrevY);
+                
+                int32 NextY = FMath::Min(PrevY + 2, LODAdjustedResolution);                 
+                float NextHeight = GetHeight(x, NextY);
+                
+                float HeightRatio = float(y - PrevY) / float(NextY - PrevY);
+                Height = FMath::Lerp(PrevHeight, NextHeight, HeightRatio);                    
+            }
+            
+            // Vert is in Left edge and needs to be adjusted
+            if (LODBorderDir.X < 0 && bIsLeftEdge && y % 2 != 0)
+            {
+                int32 PrevY = (y / 2) * 2;
+                float PrevHeight = GetHeight(x, PrevY);
+                
+                int32 NextY = FMath::Min(PrevY + 2, LODAdjustedResolution);                  
+                float NextHeight = GetHeight(x, NextY);
+                
+                float HeightRatio = float(y - PrevY) / float(NextY - PrevY);
+                Height = FMath::Lerp(PrevHeight, NextHeight, HeightRatio);                    
+            }
+			         
+			
+			Vertices.Add(FVector(x * Scale * LODStep, y * Scale * LODStep, Height));
+			UVs.Add(FVector2D(
+				(float)x / ChunkUVScale * LODAdjustedScale,
+				(float)y / ChunkUVScale * LODAdjustedScale)
+				);                
 
 		}
 	}
 	
 	// Triangles
-	for (int y = 0; y < Resolution; y++)
+	for (int y = 0; y < LODAdjustedResolution; y++)
 	{
-		for (int x = 0; x < Resolution; x++)
+		for (int x = 0; x < LODAdjustedResolution; x++)
 		{
-			int BottomLeft = y * (Resolution + 1) + x;
-			int BottomRight = y * (Resolution + 1) + x + 1;
-			int TopLeft = (y + 1) * (Resolution + 1) + x;
-			int TopRight = (y + 1) * (Resolution + 1) + x + 1;
+			int BottomLeft = y * (LODAdjustedResolution + 1) + x;
+			int BottomRight = y * (LODAdjustedResolution + 1) + x + 1;
+			int TopLeft = (y + 1) * (LODAdjustedResolution + 1) + x;
+			int TopRight = (y + 1) * (LODAdjustedResolution + 1) + x + 1;
 
 			TrianglesInner.Add(BottomLeft);
 			TrianglesInner.Add(TopLeft);

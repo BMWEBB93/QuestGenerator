@@ -2,6 +2,9 @@
 
 
 #include "WorldGenerator.h"
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/Character.h"
+
 
 // Sets default values
 AWorldGenerator::AWorldGenerator()
@@ -15,15 +18,93 @@ AWorldGenerator::AWorldGenerator()
 void AWorldGenerator::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	// Get the player and set position in middle of chunk
+	Player = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0); // get the player	
 }
+
+
 
 // Called every frame
 void AWorldGenerator::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// Get player if it isn't set
+	if (!Player)
+	{
+		Player = UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
+		if (Player)
+		{
+			PlayerChunkCoord = FIntPoint(
+				FMath::FloorToInt(Player->GetActorLocation().X / ChunkSize),
+				FMath::FloorToInt(Player->GetActorLocation().Y / ChunkSize)
+			);
+			LastPlayerCoord = PlayerChunkCoord; 
+		}
+	}
+
+	// get the players current chunk position
+	PlayerChunkCoord = FIntPoint(
+		FMath::FloorToInt(Player->GetActorLocation().X / ChunkSize),
+		FMath::FloorToInt(Player->GetActorLocation().Y / ChunkSize)
+		);
+	
+	// find if the player has moved to another chunk
+	FIntPoint ChunkShiftDirection = PlayerChunkCoord - LastPlayerCoord;	
+	ShiftsToMake += ChunkShiftDirection;
+	LastPlayerCoord = PlayerChunkCoord;
+	
+	// shift the chunks towards the direction the player moves
+	HandleChunkShifting();
+	
+	
+	double StartTime = FPlatformTime::Seconds();
+	
+	// Generate queued chunks (Land)
+	
+	// get max chunks to build this tick
+	int ChunksToBuild = FMath::Min(BuildsPerTick, PendingChunkRebuilds.Num());
+	
+	if (FPlatformTime::Seconds() - StartTime  < TimePerTick) // if within time limit
+	{
+		for (int i = 0; i < ChunksToBuild; i++)  // loop through build queue
+		{
+			// stop generating if exceeded the time limit
+			if (FPlatformTime::Seconds() - StartTime >= TimePerTick) break;
+
+			// Check if chunk is in game world
+			FChunkData* data = nullptr;			
+			data = ChunkData.Find(PendingChunkRebuilds[0]->WorldCoord);			
+			PendingChunkRebuilds[0]->bIsInGameWorld = (data != nullptr);
+			
+			// generate the chunk
+			PendingChunkRebuilds[0]->GenerateChunk(data, TerrainMaterial, PendingChunkRebuilds[0]->LODBoundary);		
+
+			// remove from build queue
+			PendingChunkRebuilds.RemoveAt(0);
+		}
+	}
+	
+
+	// Generate queued chunks (Ocean)
+	
+	// get max chunks to build this tick
+	int OceanChunksToBuild = FMath::Min(BuildsPerTick, PendingOceanRebuilds.Num());
+	
+	if (FPlatformTime::Seconds() - StartTime <= TimePerTick) // if within time limit
+	{
+		for (int i = 0; i < OceanChunksToBuild; i++)  // loop through build queue
+		{
+			// if time has been exceeded stop generating chunks
+			if (FPlatformTime::Seconds() - StartTime > TimePerTick) break;		
+			
+			PendingOceanRebuilds[0]->GenerateChunk(OceanMaterial);
+			PendingOceanRebuilds.RemoveAt(0); 
+		}
+	}
 }
+
 
 void AWorldGenerator::GenerateWorld()
 {
@@ -61,9 +142,9 @@ void AWorldGenerator::GenerateWorld()
 	ChunkData.Empty();
 	
 	// create world data
-	for (int y = 0; y <= WorldSize; y++)
+	for (int y = 0; y < WorldSize; y++)
 	{
-		for (int x = 0; x <= WorldSize; x++)
+		for (int x = 0; x < WorldSize; x++)
 		{
 			// create chunk coordinate
 			FIntPoint ChunkCoord = FIntPoint(x - WorldSize / 2, y - WorldSize / 2);
@@ -128,6 +209,7 @@ void AWorldGenerator::GenerateWorld()
 			
 			// get the direction of any LOD transitions
 			FIntPoint LODBoundary = GetLODTransitionBoundary(Chunk->LOD, Coord);	
+			Chunk->LODBoundary = LODBoundary;		
 			
 			// Get the chunk data
 			FChunkData* Data = ChunkData.Find(Coord);
@@ -194,14 +276,13 @@ void AWorldGenerator::GenerateHeightmap(FChunkData& chunkData)
 			float WorldY = y * ChunkScale + (chunkData.WorldCoord.Y * ChunkSize);
 			
 			// add a large scale noise that shapes continents
-			float Noise1 = (
+			float Noise1 =
 				FMath::PerlinNoise2D(
 					FVector2D(
 						WorldX + SeedOffsetX,
 						WorldY + SeedOffsetY
 					) * Noise1Frequency
-				) + 1.0f
-			) / 2.0f;
+				);
 			
 			
 			float ContinentHeight = ContinentBaseHeight + (Noise1 * Noise1Scale);
@@ -220,6 +301,7 @@ void AWorldGenerator::GenerateHeightmap(FChunkData& chunkData)
 	}
 
 }
+
 
 int AWorldGenerator::GetLOD(FIntPoint Coord)
 {	
@@ -272,4 +354,251 @@ FIntPoint AWorldGenerator::GetLODTransitionBoundary(int LOD, FIntPoint Coord)
 
 	return LODBoundary;
 }
+
+
+void AWorldGenerator::HandleChunkShifting()
+{
+	if (ShiftsToMake.X > 0)
+	{
+		ShiftsToMake.X--;
+		ShiftLandChunks(FIntPoint(1,0));
+		ShiftOceanChunks(FIntPoint(1, 0));
+	}
+	if (ShiftsToMake.X < 0)
+	{
+		ShiftsToMake.X++;
+		ShiftLandChunks(FIntPoint(-1, 0));
+		ShiftOceanChunks(FIntPoint(-1, 0));
+	}
+	if (ShiftsToMake.Y > 0)
+	{
+		ShiftsToMake.Y--;
+		ShiftLandChunks(FIntPoint(0, 1));
+		ShiftOceanChunks(FIntPoint(0, 1));
+	}
+	if (ShiftsToMake.Y < 0)
+	{
+		ShiftsToMake.Y++; ;
+		ShiftLandChunks(FIntPoint(0, -1));
+		ShiftOceanChunks(FIntPoint(0, -1));
+	}
+}
+
+void AWorldGenerator::ShiftLandChunks(FIntPoint Direction)
+{
+	// total render distance of chunks of all LODs
+	int TotalChunkViewDistance = 
+		LOD1RenderDistance + 
+			LOD2RenderDistance +
+				LOD3RenderDistance + 
+					LOD4RenderDistance;
+	
+	// Size of loaded chunks across one axis (in chunks)
+	int ChunkAxisSize = (TotalChunkViewDistance * 2) + 1;
+	
+	// Distance chunk should move when being wrapped
+	float ChunkMoveDistance = ChunkAxisSize * ChunkSize;
+	
+	// loop through rendered chunks
+	for (auto& Pair : ChunkVisualisers)
+	{
+		AChunkVisualiser* Chunk = Pair.Value;
+		
+		bool bShouldRegenerate = false; // should chunk rebuild mesh
+		bool bWrapChunk = false; // should chunk move to other edge
+		
+		// check if chunk should be moved
+		if (Direction.X > 0)
+		{
+			bWrapChunk = Chunk->ChunkCoord.X == -TotalChunkViewDistance;
+		}
+		else if (Direction.X < 0)
+		{
+			bWrapChunk = Chunk->ChunkCoord.X == TotalChunkViewDistance;
+		}
+		else if (Direction.Y > 0)
+		{
+			bWrapChunk = Chunk->ChunkCoord.Y == -TotalChunkViewDistance;
+		}
+		else if (Direction.Y < 0)
+		{
+			bWrapChunk = Chunk->ChunkCoord.Y == TotalChunkViewDistance;
+		}
+		
+		
+		if (bWrapChunk) // if chunk is moved to other side of chunks
+		{
+			// move chunk to new edge
+			FVector NewLocation =
+				Chunk->GetActorLocation() +
+				FVector(
+					Direction.X * ChunkMoveDistance,
+					Direction.Y * ChunkMoveDistance,
+					0.f);
+
+			Chunk->SetActorLocation(NewLocation);
+			
+			// Update Chunk Coordinates
+			Chunk->ChunkCoord = FIntPoint(
+				Chunk->ChunkCoord.X + (ChunkAxisSize - 1) * Direction.X,
+				Chunk->ChunkCoord.Y + (ChunkAxisSize - 1) * Direction.Y);
+			
+			Chunk->WorldCoord = FIntPoint(
+				Chunk->WorldCoord.X + ChunkAxisSize * Direction.X, 
+				Chunk->WorldCoord.Y + ChunkAxisSize * Direction.Y);
+				
+			
+			bShouldRegenerate = true; // wrapped chunks always need to rebuild mesh
+			
+			// clears the mesh of chunk 
+			if (Chunk->Mesh)
+			{
+				Chunk->Mesh->ClearMeshSection(0);				
+			}
+		}
+		else // chunk didn't move 
+		{
+			Chunk->ChunkCoord -= Direction; // update coord from player
+		}
+		
+		// Update LODs and regenerate if changed
+		int LastLOD = Chunk->LOD;
+		int NewLOD = GetLOD(Chunk->ChunkCoord);
+		if (NewLOD != LastLOD)
+		{
+			Chunk->LOD = NewLOD;
+			bShouldRegenerate = true;
+		}
+		
+		// get the direction of any LOD transitions
+		FIntPoint LastLODBoundary = Chunk->LODBoundary;
+		FIntPoint NewLODBoundary = GetLODTransitionBoundary(Chunk->LOD, Chunk->ChunkCoord);
+		Chunk->LODBoundary = NewLODBoundary;
+		if (LastLODBoundary != NewLODBoundary)
+		{
+			bShouldRegenerate = true;
+		}
+		
+		if (bShouldRegenerate)
+		{
+			PendingChunkRebuilds.Add(Chunk);
+		}
+	}
+	
+	// sort chunks with LOD 1 generating first
+	PendingChunkRebuilds.Sort(
+		[](AChunkVisualiser& A, AChunkVisualiser& B)
+		{
+			return FMath::Max(
+				FMath::Abs(A.ChunkCoord.X), 
+				FMath::Abs(A.ChunkCoord.Y)) < FMath::Max(
+					FMath::Abs(B.ChunkCoord.X), 
+					FMath::Abs(B.ChunkCoord.Y));
+		});	
+}
+
+void AWorldGenerator::ShiftOceanChunks(FIntPoint Direction)
+{
+	// total render distance of chunks of all LODs
+	int TotalChunkViewDistance = 
+	LOD1RenderDistance + 
+		LOD2RenderDistance +
+			LOD3RenderDistance + 
+				LOD4RenderDistance;
+	
+	// Size of loaded chunks across one axis (in chunks)
+	int ChunkAxisSize = (TotalChunkViewDistance * 2) + 1;
+	
+	// Distance chunk should move when being wrapped
+	float ChunkMoveDistance = ChunkAxisSize * ChunkSize;
+	
+	// loop through rendered chunks
+	for (auto& Pair : OceanChunks)
+	{
+		AOceanChunk* Chunk = Pair.Value;
+		
+		bool bShouldRegenerate = false; // should chunk rebuild mesh
+		bool bWrapChunk = false; // should chunk move to other edge
+		
+		// check if chunk should be moved
+		if (Direction.X > 0)
+		{
+			bWrapChunk = Chunk->ChunkCoord.X == -TotalChunkViewDistance;
+		}
+		else if (Direction.X < 0)
+		{
+			bWrapChunk = Chunk->ChunkCoord.X == TotalChunkViewDistance;
+		}
+		else if (Direction.Y > 0)
+		{
+			bWrapChunk = Chunk->ChunkCoord.Y == -TotalChunkViewDistance;
+		}
+		else if (Direction.Y < 0)
+		{
+			bWrapChunk = Chunk->ChunkCoord.Y == TotalChunkViewDistance;
+		}
+		
+		if (bWrapChunk) // if chunk is moved to other side of chunks
+		{
+			// move chunk to new edge
+			FVector NewLocation =
+				Chunk->GetActorLocation() +
+				FVector(
+					Direction.X * ChunkMoveDistance,
+					Direction.Y * ChunkMoveDistance,
+					0.f);
+
+			Chunk->SetActorLocation(NewLocation);
+			
+			// Update Chunk Coordinates
+			Chunk->ChunkCoord = FIntPoint(
+				Chunk->ChunkCoord.X + (ChunkAxisSize - 1) * Direction.X,
+				Chunk->ChunkCoord.Y + (ChunkAxisSize - 1) * Direction.Y);
+			
+			Chunk->WorldCoord = FIntPoint(
+				Chunk->WorldCoord.X + ChunkAxisSize * Direction.X, 
+				Chunk->WorldCoord.Y + ChunkAxisSize * Direction.Y);
+			
+			
+			
+			bShouldRegenerate = true; // wrapped chunks always need to rebuild mesh
+			
+			// clears the mesh of chunk 
+			if (Chunk->Mesh)
+			{
+				Chunk->Mesh->ClearMeshSection(0);				
+			}
+		}
+		else // chunk didn't move 
+		{
+			Chunk->ChunkCoord -= Direction; // update coord from player
+		}
+		
+		// Update LODs and regenerate if changed
+		int LastLOD = Chunk->LOD;
+		int NewLOD = GetLOD(Chunk->ChunkCoord);
+		if (NewLOD != LastLOD)
+		{
+			Chunk->LOD = NewLOD;
+			bShouldRegenerate = true;
+		}
+				
+		if (bShouldRegenerate)
+		{
+			PendingOceanRebuilds.Add(Chunk);
+		}
+	}
+	
+	// sort chunks with LOD 1 generating first
+	PendingOceanRebuilds.Sort(
+		[](AOceanChunk& A, AOceanChunk& B)
+		{
+			return FMath::Max(
+				FMath::Abs(A.ChunkCoord.X), 
+				FMath::Abs(A.ChunkCoord.Y)) < FMath::Max(
+					FMath::Abs(B.ChunkCoord.X), 
+					FMath::Abs(B.ChunkCoord.Y));
+		});
+}
+
 

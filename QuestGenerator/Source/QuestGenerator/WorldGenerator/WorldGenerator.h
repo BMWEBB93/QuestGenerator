@@ -37,6 +37,14 @@ public:
 	int GetLOD(FIntPoint Coord);
 	FIntPoint GetLODTransitionBoundary(int LOD, FIntPoint Coord);
 
+	// Handle shifting chunks depending on player "shifts to make"
+	void HandleChunkShifting();
+	
+	// shift land chuks when player moves to a new chunk
+	void ShiftLandChunks(FIntPoint Direction);
+
+	// shift ocean chuks when player moves to a new chunk
+	void ShiftOceanChunks(FIntPoint Direction);
 	
 	UPROPERTY()
 	TMap<FIntPoint, FChunkData> ChunkData;
@@ -47,20 +55,25 @@ public:
 	UPROPERTY()
 	TMap<FIntPoint, AChunkVisualiser*> ChunkVisualisers;
 	
+	// build queues for land chunks
+	UPROPERTY()
+	TArray<AChunkVisualiser*> PendingChunkRebuilds;
+	
+	// build queues for ocean chunks
+	UPROPERTY()
+	TArray<AOceanChunk*> PendingOceanRebuilds;
+	
 	
 	// player reference used to move chunks
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	ACharacter* Player;
 
 	UPROPERTY()
-	FVector LastPlayerLocation = FVector(0, 0, 0);
+	FIntPoint LastPlayerCoord = FIntPoint(0, 0);
 
 	UPROPERTY()
 	FIntPoint PlayerChunkCoord = FIntPoint(0, 0);
-
-	// used to move chunks
-	UPROPERTY()
-	FVector PlayerDelta = FVector(0, 0, 0);
+	
 
 	
 	/////////////////////////
@@ -73,6 +86,15 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
 	int Seed = 12345;
+	
+	// how many chunks can rebuild per tick
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	int BuildsPerTick = 2;
+	
+	// time allowed for chunk rebuilds
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Settings")
+	float TimePerTick = 0.0333f;
+	
 	
 	UPROPERTY()
 	float SeedOffsetX;
@@ -129,6 +151,9 @@ public:
 	
 	UPROPERTY()
 	float ChunkSize;
+	
+	UPROPERTY()
+	FIntPoint ShiftsToMake = FIntPoint(0,0 );
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Chunk Settings")
 	UMaterialInterface* TerrainMaterial;

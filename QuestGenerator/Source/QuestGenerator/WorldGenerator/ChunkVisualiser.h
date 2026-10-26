@@ -68,6 +68,9 @@ public:
 	TArray<float> Heights;
 	
 	
+	UPROPERTY()
+	FIntPoint LODBoundary = FIntPoint(0, 0);
+	
 	
 	// ocean settings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Edge Settings")
